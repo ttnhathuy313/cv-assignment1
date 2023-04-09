@@ -51,26 +51,25 @@ def process(img):
     cv2.imshow("hough lines transform", hough)
     cv2.waitKey(1)
     
-    # begin mess
-    x1 = []
-    y1 = []
-    for i in range(mxHeight >> 1, mxHeight - 20, 5):
-        for j in range(0, mxWidth >> 1, 1):
-            if (hough[i, j, 0] == 255):
-                x1.append(i)
-                y1.append(j)
-                break
+    # begin mess, more efficient code, exactly same logic as before
+    n = (mxHeight - 20 - (mxHeight >> 1)) // 5
+    x1 = np.empty(n, dtype=int)
+    y1 = np.empty(n, dtype=int)
+
+    for k, i in enumerate(range(mxHeight >> 1, mxHeight - 20, 5)):
+        mask = hough[i, :mxWidth >> 1, 0] == 255
+        indices = np.where(mask)[0]
+        if indices.size > 0:
+            x1[k] = i
+            y1[k] = indices[0]
+            
     diff = 40
-    lst = -1
-    for i in range(len(y1)):
-        if (i > 0 and lst - y1[i] > diff):
-            y1[i] = y1[i - 1]
-        else:
-            if (i > 0 and i < 30 and y1[i] - lst > diff):
-                for j in range(0, i):
-                    y1[j] = y1[i]
-                continue
-            lst = y1[i]
+    y1 = np.asarray(y1)
+    y_diff = np.diff(y1)
+    mask1 = y_diff > diff
+    mask2 = y_diff < -diff
+    y1[1:][mask1] = y1[:-1][mask1]
+    y1[:30][mask2[:30]] = y1[np.where(mask2[:30])[0] + 1]
 
     try:
         left_curve  = np.poly1d(np.polyfit(x1,y1, 1))
@@ -78,27 +77,25 @@ def process(img):
     res = img.copy()
     draw_fitted_line(res, left_curve)
     
-    x1 = []
-    y1 = []
-    for i in range(mxHeight >> 1, mxHeight - 20, 5):
-        found = False
-        for j in range(mxWidth - 1, mxWidth >> 1, -1):
-            if (hough[i, j, 0] == 255):
-                x1.append(i)
-                y1.append(j)
-                break
+    n = (mxHeight - 20 - (mxHeight >> 1)) // 5
+    x1 = np.empty(n, dtype=int)
+    y1 = np.empty(n, dtype=int)
+
+    for k, i in enumerate(range(mxHeight >> 1, mxHeight - 20, 5)):
+        mask = hough[i, mxWidth >> 1:mxWidth, 0] == 255
+        indices = np.where(mask)[0]
+        if indices.size > 0:
+            x1[k] = i
+            y1[k] = indices[-1] + (mxWidth >> 1)
+            
+
     diff = 40
-    lst = -1
-    for i in range(len(y1)):
-        if (i > 0 and y1[i] - lst > diff):
-            y1[i] = y1[i - 1]
-        else:
-            if (i > 0 and i < 30 and lst - y1[i] > diff):
-                for j in range(0, i):
-                    y1[j] = y1[i]
-                continue
-            lst = y1[i]
-    
+    y_diff = np.diff(y1, prepend=np.nan)
+    mask1 = y_diff > diff
+    mask2 = y_diff < -diff
+    y1[mask1] = y1[np.where(mask1)[0] - 1]
+    y1[:30][mask2[:30]] = y1[np.where(mask2[:30])[0] + 1]
+    y1[30:][mask2[30:]] = y1[np.where(mask2[30:])[0] + 29]
     #end mess
     
     try:
@@ -167,9 +164,8 @@ if __name__ == "__main__":
             break
         cv2.imshow("img", process(img))
         cv2.waitKey(1)
-    
-# cap = cv2.VideoCapture('./sample/sample6.mp4')
-# cap.set(cv2.CAP_PROP_POS_MSEC,2000) 
+# cap = cv2.VideoCapture(args.video)
+# cap.set(cv2.CAP_PROP_POS_MSEC,6000) 
 # ret, img = cap.read()
 # plt.imshow(process(img))
 # plt.show()
