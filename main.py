@@ -2,6 +2,9 @@ import cv2
 import numpy as np 
 import matplotlib.pyplot as plt
 
+frame_count = 0
+global_threshold = 190
+
 
 def draw_lines(img, lines, color = [255, 0, 0], thickness = 2):
     """Utility for drawing lines."""
@@ -46,7 +49,8 @@ def getAdaptiveThreshold(img, roi, num_lines = 20):
 
 
 def process(img, width = 3):
-    global global_threshold
+    global frame_count
+    frame_count += 1
     
     img = cv2.resize(img, (640, 400))
     mxHeight = img.shape[0]
@@ -67,7 +71,9 @@ def process(img, width = 3):
     roi_mask = np.zeros_like(img_gray)
     roi = cv2.fillPoly(roi_mask, roi_vertices, ignore_mask_color)
     img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    thresh = getAdaptiveThreshold(img_gray, roi)
+    thresh = global_threshold
+    
+    if (frame_count % 10 == 1): thresh = getAdaptiveThreshold(img_gray, roi)
     print(thresh)
     img_threshold = Filter(cv2.inRange(img_gray, thresh, 255))
     img_threshold_isolated = cv2.bitwise_and(img_threshold, roi)
