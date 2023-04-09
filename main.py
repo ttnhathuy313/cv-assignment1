@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 
 frame_count = 0
 global_threshold = 190
+roi = None
 
 
 def draw_lines(img, lines, color = [255, 0, 0], thickness = 2):
@@ -13,7 +14,7 @@ def draw_lines(img, lines, color = [255, 0, 0], thickness = 2):
             for x1,y1,x2,y2 in line:
                 cv2.line(img, (x1, y1), (x2, y2), color, thickness)
                 
-def draw_parabol(img, parabol, color = [0, 255, 0], thickness = 2, grain=5):
+def draw_fitted_line(img, parabol, color = [0, 255, 0], thickness = 2, grain=5):
     """Utility for drawing parabol."""
     mxHeight = img.shape[0]
     step = int((mxHeight - (mxHeight >> 1)) / grain)
@@ -50,31 +51,32 @@ def getAdaptiveThreshold(img, roi, num_lines = 20):
 
 def process(img, width = 3):
     global frame_count
+    global roi
     frame_count += 1
     
     img = cv2.resize(img, (640, 400))
     mxHeight = img.shape[0]
     mxWidth = img.shape[1]
     img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    roi_vertices = np.array([[
-        [0, mxHeight - 1],
-        [0, mxHeight >> 1],
-        [mxWidth - 1, mxHeight >> 1],
-        [mxWidth - 1, mxHeight - 1]    
-    ]], dtype = np.int32)
-    
+    if (type(roi) != np.ndarray):
+        roi_vertices = np.array([[
+            [0, mxHeight - 1],
+            [0, mxHeight >> 1],
+            [mxWidth - 1, mxHeight >> 1],
+            [mxWidth - 1, mxHeight - 1]    
+        ]], dtype = np.int32)
+        
 
-    ignore_mask_color = 255
-    if (len(img_gray.shape) > 2):
-        num_channel = img_gray.shape[2]
-        ignore_mask_color = (255, ) * num_channel
-    roi_mask = np.zeros_like(img_gray)
-    roi = cv2.fillPoly(roi_mask, roi_vertices, ignore_mask_color)
-    img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        ignore_mask_color = 255
+        if (len(img_gray.shape) > 2):
+            num_channel = img_gray.shape[2]
+            ignore_mask_color = (255, ) * num_channel
+        roi_mask = np.zeros_like(img_gray)
+        roi = cv2.fillPoly(roi_mask, roi_vertices, ignore_mask_color)
     thresh = global_threshold
     
+    #re calculate threshold every 10 frames
     if (frame_count % 10 == 1): thresh = getAdaptiveThreshold(img_gray, roi)
-    print(thresh)
     img_threshold = Filter(cv2.inRange(img_gray, thresh, 255))
     img_threshold_isolated = cv2.bitwise_and(img_threshold, roi)
     img_blur = img_threshold_isolated
@@ -92,7 +94,7 @@ def process(img, width = 3):
 
     hough = np.zeros((img_edges.shape[0], img_edges.shape[1], 3), dtype = np.uint8)
     draw_lines(hough, lines)
-    cv2.imshow("img2", hough)
+    cv2.imshow("hough lines transform", hough)
     cv2.waitKey(1)
     
 
@@ -125,7 +127,7 @@ def process(img, width = 3):
         left_curve  = np.poly1d(np.polyfit(x1,y1, 1))
     except: return img
     res = img.copy()
-    draw_parabol(res, left_curve)
+    draw_fitted_line(res, left_curve)
     
     x1 = []
     y1 = []
@@ -154,9 +156,9 @@ def process(img, width = 3):
         right_curve = np.poly1d(np.polyfit(x1,y1, 1))
     except: return img
     
-    draw_parabol(res, right_curve)
+    draw_fitted_line(res, right_curve)
     middle_curve = (right_curve + left_curve) / 2
-    draw_parabol(res, middle_curve, [255, 0, 0])
+    draw_fitted_line(res, middle_curve, [255, 0, 0])
     
     
     horizontal = 300
@@ -166,7 +168,7 @@ def process(img, width = 3):
 
     dist = ((right_curve + left_curve) / 2)(horizontal) - (mxWidth >> 1)
     s = 'right ' if dist < 0 else 'left '
-    distance_to_bottom_line = 7.9
+    distance_to_bottom_line = 7.9 #this param seems working idk why
     dist = round(dist * coeff * distance_to_bottom_line, 3)
     dist = abs(dist)
     lane_width = (right_curve(horizontal) - left_curve(horizontal)) * coeff * distance_to_bottom_line
