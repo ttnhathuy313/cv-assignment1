@@ -8,6 +8,19 @@ frame_count = 0
 global_threshold = 190
 roi = None
 
+def filter(y1):
+    y1 = np.asarray(y1)
+    median = np.median(y1)
+    lower_quartile = np.percentile(y1, 35)
+    upper_quartile = np.percentile(y1, 65)
+    iqr = upper_quartile - lower_quartile
+    lower_bound = lower_quartile - 1.5 * iqr
+    upper_bound = upper_quartile + 1.5 * iqr
+    outliers_mask = ((y1 < lower_bound) | (y1 > upper_bound))
+    y1[outliers_mask] = median
+    
+    return y1
+
 def process(img):
     global frame_count
     global roi
@@ -31,8 +44,8 @@ def process(img):
         roi = cv2.fillPoly(roi_mask, roi_vertices, ignore_mask_color)
         
     thresh = global_threshold
-    #re calculate threshold every 10 frames
-    if (frame_count % 10 == 1): thresh = getAdaptiveThreshold(img_gray, roi)
+    #re calculate threshold every 5 frames
+    if (frame_count % 5 == 1): thresh = getAdaptiveThreshold(img_gray, roi)
     img_threshold = Filter(cv2.inRange(img_gray, thresh, 255))
     img_threshold_isolated = cv2.bitwise_and(img_threshold, roi)
     img_edges = cv2.Canny(img_threshold_isolated, 150, 220)
@@ -51,25 +64,25 @@ def process(img):
     cv2.imshow("hough lines transform", hough)
     cv2.waitKey(1)
     
-    # begin mess, more efficient code, exactly same logic as before
-    n = (mxHeight - 20 - (mxHeight >> 1)) // 5
-    x1 = np.empty(n, dtype=int)
-    y1 = np.empty(n, dtype=int)
-
-    for k, i in enumerate(range(mxHeight >> 1, mxHeight - 20, 5)):
-        mask = hough[i, :mxWidth >> 1, 0] == 255
-        indices = np.where(mask)[0]
-        if indices.size > 0:
-            x1[k] = i
-            y1[k] = indices[0]
-            
+    x1 = []
+    y1 = []
+    for i in range(mxHeight >> 1, mxHeight - 20, 5):
+        for j in range(0, mxWidth >> 1, 1):
+            if (hough[i, j, 0] == 255):
+                x1.append(i)
+                y1.append(j)
+                break
     diff = 40
-    y1 = np.asarray(y1)
-    y_diff = np.diff(y1)
-    mask1 = y_diff > diff
-    mask2 = y_diff < -diff
-    y1[1:][mask1] = y1[:-1][mask1]
-    y1[:30][mask2[:30]] = y1[np.where(mask2[:30])[0] + 1]
+    lst = -1
+    for i in range(len(y1)):
+        if (i > 0 and lst - y1[i] > diff):
+            y1[i] = y1[i - 1]
+        else:
+            if (i > 0 and i < 30 and y1[i] - lst > diff):
+                for j in range(0, i):
+                    y1[j] = y1[i]
+                continue
+            lst = y1[i]
 
     try:
         left_curve  = np.poly1d(np.polyfit(x1,y1, 1))
@@ -77,25 +90,27 @@ def process(img):
     res = img.copy()
     draw_fitted_line(res, left_curve)
     
-    n = (mxHeight - 20 - (mxHeight >> 1)) // 5
-    x1 = np.empty(n, dtype=int)
-    y1 = np.empty(n, dtype=int)
-
-    for k, i in enumerate(range(mxHeight >> 1, mxHeight - 20, 5)):
-        mask = hough[i, mxWidth >> 1:mxWidth, 0] == 255
-        indices = np.where(mask)[0]
-        if indices.size > 0:
-            x1[k] = i
-            y1[k] = indices[-1] + (mxWidth >> 1)
-            
-
+    x1 = []
+    y1 = []
+    for i in range(mxHeight >> 1, mxHeight - 20, 5):
+        found = False
+        for j in range(mxWidth - 1, mxWidth >> 1, -1):
+            if (hough[i, j, 0] == 255):
+                x1.append(i)
+                y1.append(j)
+                break
     diff = 40
-    y_diff = np.diff(y1, prepend=np.nan)
-    mask1 = y_diff > diff
-    mask2 = y_diff < -diff
-    y1[mask1] = y1[np.where(mask1)[0] - 1]
-    y1[:30][mask2[:30]] = y1[np.where(mask2[:30])[0] + 1]
-    y1[30:][mask2[30:]] = y1[np.where(mask2[30:])[0] + 29]
+    lst = -1
+    for i in range(len(y1)):
+        if (i > 0 and y1[i] - lst > diff):
+            y1[i] = y1[i - 1]
+        else:
+            if (i > 0 and i < 30 and lst - y1[i] > diff):
+                for j in range(0, i):
+                    y1[j] = y1[i]
+                continue
+            lst = y1[i]
+    
     #end mess
     
     try:
@@ -148,24 +163,24 @@ coeff = 3.858038022 / (data['camera_matrix'][0][0] / 3.858038022535227)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--video', type=str, help="indicate path to video", 
-                    default='./sample/sample6.mp4')
+                    default='./sample/sample5.mp4')
 parser.add_argument('--real-time', type=bool, 
                     help="set this to true if you want to calculate real time", 
                     default=False)
 args = parser.parse_args()
 
-if __name__ == "__main__":
-    cap = cv2.VideoCapture(args.video)
-    if (args.real_time):
-        cap = cv2.VideoCapture(0)
-    while (True):
-        ret, img = cap.read()
-        if (ret == False):
-            break
-        cv2.imshow("img", process(img))
-        cv2.waitKey(1)
-# cap = cv2.VideoCapture(args.video)
-# cap.set(cv2.CAP_PROP_POS_MSEC,6000) 
-# ret, img = cap.read()
-# plt.imshow(process(img))
-# plt.show()
+# if __name__ == "__main__":
+#     cap = cv2.VideoCapture(args.video)
+#     if (args.real_time):
+#         cap = cv2.VideoCapture(0)
+#     while (True):
+#         ret, img = cap.read()
+#         if (ret == False):
+#             break
+#         cv2.imshow("img", process(img))
+#         cv2.waitKey(1)
+cap = cv2.VideoCapture(args.video)
+cap.set(cv2.CAP_PROP_POS_MSEC,6000) 
+ret, img = cap.read()
+plt.imshow(process(img))
+plt.show()
