@@ -8,18 +8,6 @@ frame_count = 0
 global_threshold = 190
 roi = None
 
-def filter(y1):
-    y1 = np.asarray(y1)
-    median = np.median(y1)
-    lower_quartile = np.percentile(y1, 35)
-    upper_quartile = np.percentile(y1, 65)
-    iqr = upper_quartile - lower_quartile
-    lower_bound = lower_quartile - 1.5 * iqr
-    upper_bound = upper_quartile + 1.5 * iqr
-    outliers_mask = ((y1 < lower_bound) | (y1 > upper_bound))
-    y1[outliers_mask] = median
-    
-    return y1
 
 def process(img):
     global frame_count
@@ -169,18 +157,18 @@ parser.add_argument('--real-time', type=bool,
                     default=False)
 args = parser.parse_args()
 
-# if __name__ == "__main__":
-#     cap = cv2.VideoCapture(args.video)
-#     if (args.real_time):
-#         cap = cv2.VideoCapture(0)
-#     while (True):
-#         ret, img = cap.read()
-#         if (ret == False):
-#             break
-#         cv2.imshow("img", process(img))
-#         cv2.waitKey(1)
-cap = cv2.VideoCapture(args.video)
-cap.set(cv2.CAP_PROP_POS_MSEC,6000) 
-ret, img = cap.read()
-plt.imshow(process(img))
-plt.show()
+if __name__ == "__main__":
+    cap = cv2.VideoCapture(args.video)
+    if (args.real_time):
+        cap = cv2.VideoCapture(0)
+    while (True):
+        ret, img = cap.read()
+        if (ret == False):
+            break
+        cv2.imshow("img", process(img))
+        cv2.waitKey(1)
+# cap = cv2.VideoCapture(args.video)
+# cap.set(cv2.CAP_PROP_POS_MSEC,6000) 
+# ret, img = cap.read()
+# plt.imshow(process(img))
+# plt.show()
