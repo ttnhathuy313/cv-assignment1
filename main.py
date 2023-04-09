@@ -179,7 +179,7 @@ parser.add_argument('--video', type=str, help="indicate path to video",
                     default='./sample/sample6.mp4')
 parser.add_argument('--real-time', type=bool, 
                     help="set this to true if you want to calculate real time", 
-                    default=False)
+                    default=True)
 args = parser.parse_args()
 
 if __name__ == "__main__":

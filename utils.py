@@ -34,6 +34,6 @@ def getAdaptiveThreshold(img, roi, num_lines = 20):
         lines = cv2.HoughLinesP(canny, 1, 
                                 np.pi / 180, 20, minLineLength = 5, 
                                 maxLineGap = 5)
-        if len(lines) <= num_lines:
+        if lines is not None and len(lines) <= num_lines:
             return thresh
     return 190
