@@ -2,7 +2,6 @@ import cv2
 import numpy as np 
 import matplotlib.pyplot as plt
 
-global_threshold = 160
 
 def draw_lines(img, lines, color = [255, 0, 0], thickness = 2):
     """Utility for drawing lines."""
@@ -168,6 +167,18 @@ def process(img, width = 3):
     lane_width = round(lane_width, 3)
     cv2.putText(res, s + str(dist) + 'cm', (20, 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1, cv2.LINE_AA)
     cv2.putText(res, 'lane width ' + str(lane_width) + 'cm', (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1, cv2.LINE_AA)
+    
+    #draw lane area
+    points = [
+        (int(left_curve(mxHeight)), mxHeight),
+        (int(left_curve(mxHeight>>1)), mxHeight>>1),
+        (int(right_curve(mxHeight>>1)), mxHeight>>1),
+        (int(right_curve(mxHeight)), mxHeight)
+    ]
+    mask = np.full((mxHeight, mxWidth, 3), (255, 255, 255), dtype = np.uint8)
+    
+    cv2.fillPoly(mask, np.array([points]), (0, 204, 255))
+    res = cv2.bitwise_and(mask, res)
     
     return res 
 
