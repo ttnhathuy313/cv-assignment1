@@ -142,7 +142,7 @@ def process(img):
 
     dist = ((right_curve + left_curve) / 2)(horizontal) - (mxWidth >> 1)
     s = 'right ' if dist < 0 else 'left '
-    distance_to_bottom_line = 7.9 #this param seems to be working idk why
+    distance_to_bottom_line = 150 #distance to the horizontal line in cm
     dist = round(dist * coeff * distance_to_bottom_line, 3)
     dist = abs(dist)
     lane_width = (right_curve(horizontal) - left_curve(horizontal)) * coeff * distance_to_bottom_line
@@ -171,15 +171,14 @@ from yaml.loader import SafeLoader
 with open('cam.yaml') as f:
     data = yaml.load(f, Loader=SafeLoader)
 
-#to do: find a way to get this value from the camera
-coeff = 3.858038022 / (data['camera_matrix'][0][0] / 3.858038022535227)
+coeff = 1 / (data['camera_matrix'][0][0])
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--video', type=str, help="indicate path to video", 
-                    default='./sample/sample6.mp4')
+                    default='./sample/sample5.mp4')
 parser.add_argument('--real-time', type=bool, 
                     help="set this to true if you want to calculate real time", 
-                    default=True)
+                    default=False)
 args = parser.parse_args()
 
 if __name__ == "__main__":
