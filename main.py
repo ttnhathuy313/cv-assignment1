@@ -31,9 +31,13 @@ def process(img):
         roi_mask = np.zeros_like(img_gray)
         roi = cv2.fillPoly(roi_mask, roi_vertices, ignore_mask_color)
         
+    global global_threshold
     thresh = global_threshold
-    #re calculate threshold every 5 frames
-    if (frame_count % 5 == 1): thresh = getAdaptiveThreshold(img_gray, roi)
+    #re calculate threshold every 10 frames
+    if (frame_count % 10 == 1): 
+        thresh = getAdaptiveThreshold(img_gray, roi)
+        global_threshold = thresh
+
     img_threshold = Filter(cv2.inRange(img_gray, thresh, 255))
     img_threshold_isolated = cv2.bitwise_and(img_threshold, roi)
     img_edges = cv2.Canny(img_threshold_isolated, 150, 220)
@@ -60,17 +64,27 @@ def process(img):
                 x1.append(i)
                 y1.append(j)
                 break
+    y1 = np.array(y1)
+    x1 = np.array(x1)
     diff = 40
     lst = -1
     for i in range(len(y1)):
-        if (i > 0 and lst - y1[i] > diff):
-            y1[i] = y1[i - 1]
+        if (i > 0 and abs(lst - y1[i]) > diff):
+            y1[i] = -1
+            x1[i] = -1
         else:
-            if (i > 0 and i < 30 and y1[i] - lst > diff):
-                for j in range(0, i):
-                    y1[j] = y1[i]
-                continue
             lst = y1[i]
+    mask = y1 != -1
+    y1 = y1[mask]
+    x1 = x1[mask]
+    
+    # Find the first index where the condition is met
+    index = np.where(np.abs(np.diff(y1)) > 15)[0]
+
+    # If an index is found, remove all elements after that index
+    if index.size > 0 and index[0] >= (len(y1) >> 1):
+        x1 = x1[:index[0]]
+        y1 = y1[:index[0]]
 
     try:
         left_curve  = np.poly1d(np.polyfit(x1,y1, 1))
@@ -90,14 +104,25 @@ def process(img):
     diff = 40
     lst = -1
     for i in range(len(y1)):
-        if (i > 0 and y1[i] - lst > diff):
-            y1[i] = y1[i - 1]
+        if (i > 0 and abs(y1[i] - lst) > diff):
+            y1[i] = -1
+            x1[i] = -1
         else:
-            if (i > 0 and i < 30 and lst - y1[i] > diff):
-                for j in range(0, i):
-                    y1[j] = y1[i]
-                continue
             lst = y1[i]
+    x1 = np.array(x1)
+    y1 = np.array(y1)
+    mask = y1 != -1
+    y1 = y1[mask]
+    x1 = x1[mask]
+    
+    # Find the first index where the condition is met
+    index = np.where(np.abs(np.diff(y1)) > 15)[0]
+
+    # If an index is found, remove all elements after that index
+    if index.size > 0 and index[0] >= (len(y1) >> 1):
+        x1 = x1[:index[0]]
+        y1 = y1[:index[0]]
+    
     
     #end mess
     
@@ -151,7 +176,7 @@ coeff = 3.858038022 / (data['camera_matrix'][0][0] / 3.858038022535227)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--video', type=str, help="indicate path to video", 
-                    default='./sample/sample5.mp4')
+                    default='./sample/sample6.mp4')
 parser.add_argument('--real-time', type=bool, 
                     help="set this to true if you want to calculate real time", 
                     default=False)
@@ -168,7 +193,7 @@ if __name__ == "__main__":
         cv2.imshow("img", process(img))
         cv2.waitKey(1)
 # cap = cv2.VideoCapture(args.video)
-# cap.set(cv2.CAP_PROP_POS_MSEC,6000) 
+# cap.set(cv2.CAP_PROP_POS_MSEC,1400) 
 # ret, img = cap.read()
 # plt.imshow(process(img))
 # plt.show()
