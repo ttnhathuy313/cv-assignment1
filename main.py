@@ -1,121 +1,198 @@
 import cv2
+import argparse
 import numpy as np 
 import matplotlib.pyplot as plt
+from utils import getAdaptiveThreshold, draw_lines, draw_fitted_line, Filter
 
-def draw_lines(img, lines, color = [255, 0, 0], thickness = 2):
-    """Utility for drawing lines."""
-    if lines is not None:
-        for line in lines:
-            for x1,y1,x2,y2 in line:
-                cv2.line(img, (x1, y1), (x2, y2), color, thickness)
-                
-def draw_parabol(img, parabol, color = [0, 255, 0], thickness = 2, grain=5):
-    """Utility for drawing parabol."""
-    mxHeight = img.shape[0]
-    step = int((mxHeight - (mxHeight >> 1)) / grain)
-    x = np.arange((mxHeight >> 1) - step, mxHeight, step)
-    y = parabol(x)
-    points = np.column_stack((y, x)).astype(np.int32)
-    cv2.polylines(img, [points], False, color, thickness)
+frame_count = 0
+global_threshold = 190
+roi = None
 
 
-def process(img, width = 3):
+def process(img):
+    global frame_count
+    global roi
+    frame_count += 1
+    
+    # resize image to 640x400
+    img = cv2.resize(img, (640, 400))
     mxHeight = img.shape[0]
     mxWidth = img.shape[1]
     img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    roi_vertices = np.array([[
-        [0, mxHeight - 1],
-        [0, mxHeight >> 1],
-        [mxWidth - 1, mxHeight >> 1],
-        [mxWidth - 1, mxHeight - 1]    
-    ]], dtype = np.int32)
+    if (type(roi) != np.ndarray):
+        roi_vertices = np.array([[
+            [0, mxHeight - 1],
+            [0, mxHeight >> 1],
+            [mxWidth - 1, mxHeight >> 1],
+            [mxWidth - 1, mxHeight - 1]    
+        ]], dtype = np.int32)
+        
+        ignore_mask_color = 255
+        roi_mask = np.zeros_like(img_gray)
+        roi = cv2.fillPoly(roi_mask, roi_vertices, ignore_mask_color)
+        
+    global global_threshold
+    thresh = global_threshold
+    #re calculate threshold every 10 frames
+    if (frame_count % 10 == 1): 
+        thresh = getAdaptiveThreshold(img_gray, roi)
+        global_threshold = thresh
 
-    ignore_mask_color = 255
-    if (len(img_gray.shape) > 2):
-        num_channel = img_gray.shape[2]
-        ignore_mask_color = (255, ) * num_channel
-    roi_mask = np.zeros_like(img_gray)
-    roi = cv2.fillPoly(roi_mask, roi_vertices, ignore_mask_color)
-    img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    img_threshold = cv2.inRange(img_gray, 180, 255)
+    img_threshold = Filter(cv2.inRange(img_gray, thresh, 255))
     img_threshold_isolated = cv2.bitwise_and(img_threshold, roi)
-    img_blur = cv2.GaussianBlur(img_threshold_isolated, (11, 11), 15, 15)
-    img_edges = cv2.Canny(img_blur, 150, 220)
+    img_edges = cv2.Canny(img_threshold_isolated, 150, 220)
 
-    rho = 1
-    theta = np.pi / 180
     threshold = 20
-    min_line_len = 0
+    min_line_len = 5
     max_line_gap = 5
 
     lines = cv2.HoughLinesP(
-        img_edges, rho, theta, threshold, minLineLength = min_line_len, maxLineGap = max_line_gap)
+        img_edges, 1, np.pi / 180, threshold, 
+        minLineLength = min_line_len, maxLineGap = max_line_gap)
+
 
     hough = np.zeros((img_edges.shape[0], img_edges.shape[1], 3), dtype = np.uint8)
     draw_lines(hough, lines)
-
+    cv2.imshow("hough lines transform", hough)
+    cv2.waitKey(1)
+    
     x1 = []
     y1 = []
-    for i in range (mxHeight >> 1, mxHeight - 20, 10):
-        if (i > mxHeight): break
-        for j in range(0, mxWidth >> 1):
-            if (j > mxWidth): break
-            if hough[i, j, 0] == 255:
+    for i in range(mxHeight >> 1, mxHeight - 20, 5):
+        for j in range(0, mxWidth >> 1, 1):
+            if (hough[i, j, 0] == 255):
                 x1.append(i)
                 y1.append(j)
                 break
+    y1 = np.array(y1)
+    x1 = np.array(x1)
+    diff = 40
+    lst = -1
+    for i in range(len(y1)):
+        if (i > 0 and abs(lst - y1[i]) > diff):
+            y1[i] = -1
+            x1[i] = -1
+        else:
+            lst = y1[i]
+    mask = y1 != -1
+    y1 = y1[mask]
+    x1 = x1[mask]
+    
+    # Find the first index where the condition is met
+    index = np.where(np.abs(np.diff(y1)) > 15)[0]
+
+    # If an index is found, remove all elements after that index
+    if index.size > 0 and index[0] >= (len(y1) >> 1):
+        x1 = x1[:index[0]]
+        y1 = y1[:index[0]]
 
     try:
-        left_curve  = np.poly1d(np.polyfit(x1,y1, 2))
+        left_curve  = np.poly1d(np.polyfit(x1,y1, 1))
     except: return img
     res = img.copy()
-    draw_parabol(res, left_curve)
-
+    draw_fitted_line(res, left_curve)
+    
     x1 = []
     y1 = []
-    for i in range (mxHeight >> 1, mxHeight - 20, 10):
-        if (i > mxHeight): break
+    for i in range(mxHeight >> 1, mxHeight - 20, 5):
+        found = False
         for j in range(mxWidth - 1, mxWidth >> 1, -1):
-            if (j > mxWidth): break
-            if hough[i, j, 0] == 255:
+            if (hough[i, j, 0] == 255):
                 x1.append(i)
                 y1.append(j)
                 break
+    diff = 40
+    lst = -1
+    for i in range(len(y1)):
+        if (i > 0 and abs(y1[i] - lst) > diff):
+            y1[i] = -1
+            x1[i] = -1
+        else:
+            lst = y1[i]
+    x1 = np.array(x1)
+    y1 = np.array(y1)
+    mask = y1 != -1
+    y1 = y1[mask]
+    x1 = x1[mask]
+    
+    # Find the first index where the condition is met
+    index = np.where(np.abs(np.diff(y1)) > 15)[0]
 
+    # If an index is found, remove all elements after that index
+    if index.size > 0 and index[0] >= (len(y1) >> 1):
+        x1 = x1[:index[0]]
+        y1 = y1[:index[0]]
+    
+    
+    #end mess
+    
     try:
-        right_curve = np.poly1d(np.polyfit(x1,y1, 2))
+        right_curve = np.poly1d(np.polyfit(x1,y1, 1))
     except: return img
     
-    draw_parabol(res, right_curve)
-    draw_parabol(res, (right_curve + left_curve) / 2, [255, 0, 0])
+    draw_fitted_line(res, right_curve)
+    middle_curve = (right_curve + left_curve) / 2
+    draw_fitted_line(res, middle_curve, [255, 0, 0])
     
-    dist = ((right_curve + left_curve) / 2)(mxHeight) - (mxWidth >> 1)
-    s = 'left ' if dist < 0 else 'right '
-    dist = round(dist * coeff * 50, 3)
+    
+    horizontal = 300
+    
+    cv2.line(res, (int(left_curve(horizontal)), horizontal), 
+             (int(right_curve(horizontal)), horizontal), (0, 0, 255), 2)
+
+    dist = ((right_curve + left_curve) / 2)(horizontal) - (mxWidth >> 1)
+    s = 'right ' if dist < 0 else 'left '
+    distance_to_bottom_line = 150 #distance to the horizontal line in cm
+    dist = round(dist * coeff * distance_to_bottom_line, 3)
     dist = abs(dist)
-    cv2.putText(res, s + str(dist) + 'mm', (20, 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 1, cv2.LINE_AA)
+    lane_width = (right_curve(horizontal) - left_curve(horizontal)) * coeff * distance_to_bottom_line
+    lane_width = round(lane_width, 3)
+    cv2.putText(res, s + str(dist) + 'cm', (20, 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1, cv2.LINE_AA)
+    cv2.putText(res, 'lane width ' + str(lane_width) + 'cm', (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1, cv2.LINE_AA)
+    
+    #draw lane area
+    points = [
+        (int(left_curve(mxHeight)), mxHeight),
+        (int(left_curve(mxHeight>>1)), mxHeight>>1),
+        (int(right_curve(mxHeight>>1)), mxHeight>>1),
+        (int(right_curve(mxHeight)), mxHeight)
+    ]
+    mask = np.full((mxHeight, mxWidth, 3), (255, 255, 255), dtype = np.uint8)
+    
+    cv2.fillPoly(mask, np.array([points]), (0, 204, 255))
+    res = cv2.bitwise_and(mask, res)
     
     return res 
 
-#400, 640
 
+#getting camera matrix from yaml file
 import yaml
 from yaml.loader import SafeLoader
 with open('cam.yaml') as f:
     data = yaml.load(f, Loader=SafeLoader)
 
-coeff = 3.858038022 / (data['camera_matrix'][0][0] / 3.858038022535227)
+coeff = 1 / (data['camera_matrix'][0][0])
 
-cap = cv2.VideoCapture(0)
-print('connected')
-print(cap)
-while (True):
-    ret, img = cap.read()
-    if (ret == False):
-        break
-    cv2.imshow("img", process(img))
-    cv2.waitKey(1)
-    
-cap = cv2.VideoCapture('two_lanes.mp4')
-cap.set(cv2.CAP_PROP_POS_MSEC,12000) 
-ret, img = cap.read()
+parser = argparse.ArgumentParser()
+parser.add_argument('--video', type=str, help="indicate path to video", 
+                    default='./sample/sample5.mp4')
+parser.add_argument('--real-time', type=bool, 
+                    help="set this to true if you want to calculate real time", 
+                    default=False)
+args = parser.parse_args()
+
+if __name__ == "__main__":
+    cap = cv2.VideoCapture(args.video)
+    if (args.real_time):
+        cap = cv2.VideoCapture(0)
+    while (True):
+        ret, img = cap.read()
+        if (ret == False):
+            break
+        cv2.imshow("img", process(img))
+        cv2.waitKey(1)
+# cap = cv2.VideoCapture(args.video)
+# cap.set(cv2.CAP_PROP_POS_MSEC,1400) 
+# ret, img = cap.read()
+# plt.imshow(process(img))
+# plt.show()
