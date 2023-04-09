@@ -14,22 +14,25 @@ def draw_lines(img, lines, color = [255, 0, 0], thickness = 2):
             for x1,y1,x2,y2 in line:
                 cv2.line(img, (x1, y1), (x2, y2), color, thickness)
                 
-def draw_fitted_line(img, parabol, color = [0, 255, 0], thickness = 2, grain=5):
-    """Utility for drawing parabol."""
+def draw_fitted_line(img, fitted_line, color = [0, 255, 0], thickness = 2, grain=5):
+    """Utility for drawing the line fitted to selected points."""
     mxHeight = img.shape[0]
     step = int((mxHeight - (mxHeight >> 1)) / grain)
     x = np.arange((mxHeight >> 1) - step, mxHeight, step)
-    y = parabol(x)
+    y = fitted_line(x)
     points = np.column_stack((y, x)).astype(np.int32)
     cv2.polylines(img, [points], False, color, thickness)
     
 def Filter(img, length=10):
+    """Utility for filtering out noise."""
     res = img.copy()
     res = cv2.erode(res, np.ones((length, length), np.uint8))
     res = cv2.dilate(res, np.ones((length, length), np.uint8))
     return res
 
 def getAdaptiveThreshold(img, roi, num_lines = 20):
+    """Utility for getting adaptive threshold. Choose threshold that gives
+    less amount of lines after Hough Transform"""
     for thresh in range(160, 230, 5):
         selected = Filter(cv2.inRange(img, thresh, 255))
         selected = cv2.bitwise_and(selected, roi)
@@ -37,13 +40,6 @@ def getAdaptiveThreshold(img, roi, num_lines = 20):
         lines = cv2.HoughLinesP(canny, 1, 
                                 np.pi / 180, 20, minLineLength = 5, 
                                 maxLineGap = 5)
-        
-        # if (thresh == 200):
-        #     hough = np.zeros((selected.shape[0], selected.shape[1], 3), dtype = np.uint8)
-        #     print(len(lines))
-        #     draw_lines(hough, lines)
-        #     plt.imshow(hough)
-        #     plt.show()
         if len(lines) <= num_lines:
             return thresh
     return 190
@@ -66,30 +62,24 @@ def process(img, width = 3):
             [mxWidth - 1, mxHeight - 1]    
         ]], dtype = np.int32)
         
-
         ignore_mask_color = 255
-        if (len(img_gray.shape) > 2):
-            num_channel = img_gray.shape[2]
-            ignore_mask_color = (255, ) * num_channel
         roi_mask = np.zeros_like(img_gray)
         roi = cv2.fillPoly(roi_mask, roi_vertices, ignore_mask_color)
+        
     thresh = global_threshold
-    
     #re calculate threshold every 10 frames
     if (frame_count % 10 == 1): thresh = getAdaptiveThreshold(img_gray, roi)
     img_threshold = Filter(cv2.inRange(img_gray, thresh, 255))
     img_threshold_isolated = cv2.bitwise_and(img_threshold, roi)
-    img_blur = img_threshold_isolated
-    img_edges = cv2.Canny(img_blur, 150, 220)
+    img_edges = cv2.Canny(img_threshold_isolated, 150, 220)
 
-    rho = 1
-    theta = np.pi / 180
     threshold = 20
     min_line_len = 5
     max_line_gap = 5
 
     lines = cv2.HoughLinesP(
-        img_edges, rho, theta, threshold, minLineLength = min_line_len, maxLineGap = max_line_gap)
+        img_edges, 1, np.pi / 180, threshold, 
+        minLineLength = min_line_len, maxLineGap = max_line_gap)
 
 
     hough = np.zeros((img_edges.shape[0], img_edges.shape[1], 3), dtype = np.uint8)
@@ -97,10 +87,7 @@ def process(img, width = 3):
     cv2.imshow("hough lines transform", hough)
     cv2.waitKey(1)
     
-
-    # plt.imshow(hough, cmap = 'gray')
-    # plt.show()
-
+    # begin mess
     x1 = []
     y1 = []
     for i in range(mxHeight >> 1, mxHeight - 20, 5):
@@ -120,8 +107,6 @@ def process(img, width = 3):
                     y1[j] = y1[i]
                 continue
             lst = y1[i]
-
-    # print(x1, y1)
 
     try:
         left_curve  = np.poly1d(np.polyfit(x1,y1, 1))
@@ -150,8 +135,8 @@ def process(img, width = 3):
                 continue
             lst = y1[i]
     
-    # plt.imshow(hough)
-    # plt.show()
+    #end mess
+    
     try:
         right_curve = np.poly1d(np.polyfit(x1,y1, 1))
     except: return img
@@ -168,7 +153,7 @@ def process(img, width = 3):
 
     dist = ((right_curve + left_curve) / 2)(horizontal) - (mxWidth >> 1)
     s = 'right ' if dist < 0 else 'left '
-    distance_to_bottom_line = 7.9 #this param seems working idk why
+    distance_to_bottom_line = 7.9 #this param seems to be working idk why
     dist = round(dist * coeff * distance_to_bottom_line, 3)
     dist = abs(dist)
     lane_width = (right_curve(horizontal) - left_curve(horizontal)) * coeff * distance_to_bottom_line
@@ -196,12 +181,11 @@ from yaml.loader import SafeLoader
 with open('cam.yaml') as f:
     data = yaml.load(f, Loader=SafeLoader)
 
+#to do: find a way to get this value from the camera
 coeff = 3.858038022 / (data['camera_matrix'][0][0] / 3.858038022535227)
 
 
 cap = cv2.VideoCapture('./sample/sample6.mp4')
-print('connected')
-print(cap)
 while (True):
     ret, img = cap.read()
     if (ret == False):
