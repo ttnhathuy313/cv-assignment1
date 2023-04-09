@@ -153,19 +153,21 @@ def process(img, width = 3):
     middle_curve = (right_curve + left_curve) / 2
     draw_parabol(res, middle_curve, [255, 0, 0])
     
-    horizontal = 300.0
+    
+    horizontal = 300
+    
+    cv2.line(res, (int(left_curve(horizontal)), horizontal), 
+             (int(right_curve(horizontal)), horizontal), (0, 0, 255), 2)
 
-    hor = np.poly1d([-1.0/middle_curve[1], middle_curve[1] * horizontal + middle_curve[0] + horizontal / middle_curve[1]])
-    x_left = 1.0 * (left_curve[0] - hor[0]) / (hor[1] - left_curve[1])
-    x_right = (right_curve[0] - hor[0]) / (hor[1] - right_curve[1])
-    cv2.line(res, (int(left_curve(x_left)), int(x_left)), (int(right_curve(x_right)), int(x_right)), (0, 0, 255), 2)
-
-    dist = ((right_curve + left_curve) / 2)(mxHeight) - (mxWidth >> 1)
+    dist = ((right_curve + left_curve) / 2)(horizontal) - (mxWidth >> 1)
     s = 'right ' if dist < 0 else 'left '
-    distance_to_bottom_line = 50 
+    distance_to_bottom_line = 7.9
     dist = round(dist * coeff * distance_to_bottom_line, 3)
     dist = abs(dist)
-    cv2.putText(res, s + str(dist) + 'mm', (20, 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 1, cv2.LINE_AA)
+    lane_width = (right_curve(horizontal) - left_curve(horizontal)) * coeff * distance_to_bottom_line
+    lane_width = round(lane_width, 3)
+    cv2.putText(res, s + str(dist) + 'cm', (20, 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1, cv2.LINE_AA)
+    cv2.putText(res, 'lane width ' + str(lane_width) + 'cm', (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 1, cv2.LINE_AA)
     
     return res 
 
